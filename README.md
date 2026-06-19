@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Ephemeral Global Chat
 
 Real-time global chat dengan auto-delete pesan setelah 12 jam. Tanpa login, hanya nama tampilan.
@@ -37,3 +38,7 @@ File `firestore.rules` disertakan di docs/security.md
 
 ## Upgrade ke V2
 - Tambahkan reaksi, reply, dan private chat.
+=======
+# ephemeralchat
+Realtime global chat app with ephemeral messages (auto delete after 12 hours) built with HTML, CSS, JS, Firebase, and Vercel.
+>>>>>>> e3509aea86b6df6ae6790b10879f140b3625cdbb
