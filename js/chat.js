@@ -1,41 +1,33 @@
-import { db, addDocument, listenCollection, serverTimestamp, Timestamp } from './firebase.js';
-import { storageGet } from './storage.js';
-import { formatTimestamp, escapeHtml, isEmptyMessage } from './utils.js';
-import { containsSensitiveData, sanitizeInput } from './security.js';
-import { validateMessage } from './validation.js';
-import { showToast, confirmAction } from './ui.js';
+// Chat functionality
 
 let currentUser = null;
-let lastMessageTime = 0;
-let messageListener = null;
-let isSending = false;
+let currentRoomId = null;
+let currentPartnerId = null;
+let messagesUnsubscribe = null;
+let typingUnsubscribe = null;
+let statusUnsubscribe = null;
 
-function initChat() {
-    // Ambil user dari localStorage
-    const user = storageGet('user');
-    if (!user || !user.uid) {
-        // Redirect ke index
-        window.location.href = 'index.html';
-        return;
-    }
+// Initialize chat
+function initChat(user) {
     currentUser = user;
+    document.getElementById('sidebarUserName').textContent = user.name;
+    loadRooms();
 
-    // Setup UI
-    const messageInput = document.getElementById('messageInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const messageContainer = document.getElementById('messageContainer');
-    const emptyState = document.getElementById('emptyState');
-    const spamWarning = document.getElementById('spamWarning');
-    const sensitiveWarning = document.getElementById('sensitiveWarning');
+    // New chat button
+    document.getElementById('newChatBtn').addEventListener('click', startNewChat);
 
-    // Auto-resize textarea
-    messageInput.addEventListener('input', () => {
-        messageInput.style.height = 'auto';
-        messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
-        sendBtn.disabled = isEmptyMessage(messageInput.value);
+    // Logout
+    document.getElementById('logoutSidebarBtn').addEventListener('click', () => {
+        if (confirm('Logout?')) {
+            localStorage.removeItem('ephemeral_user');
+            window.location.href = 'login.html';
+        }
     });
 
-    // Send on Enter (Shift+Enter untuk newline)
+    // Send message
+    const sendBtn = document.getElementById('sendBtn');
+    const messageInput = document.getElementById('messageInput');
+    sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -43,150 +35,281 @@ function initChat() {
         }
     });
 
-    sendBtn.addEventListener('click', sendMessage);
-
-    // Load messages realtime
-    loadMessages();
-
-    // Fungsi kirim
-    async function sendMessage() {
-        if (isSending) return;
-        const text = messageInput.value;
-        const validation = validateMessage(text);
-        if (!validation.valid) {
-            showToast(validation.message, 'error');
-            return;
+    // Typing detection
+    let typingTimeout = null;
+    messageInput.addEventListener('input', () => {
+        if (currentRoomId && currentPartnerId) {
+            setTyping(currentRoomId, currentUser.userId, true);
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                setTyping(currentRoomId, currentUser.userId, false);
+            }, 1000);
         }
+    });
 
-        // Anti-spam: 2 detik
-        const now = Date.now();
-        if (now - lastMessageTime < 2000) {
-            spamWarning.style.display = 'block';
-            setTimeout(() => spamWarning.style.display = 'none', 3000);
-            return;
-        }
+    // Update online status when page visibility changes
+    document.addEventListener('visibilitychange', () => {
+        const online = document.visibilityState === 'visible';
+        updateUserOnlineStatus(currentUser.userId, online);
+    });
 
-        // Filter konten sensitif
-        const cleanText = sanitizeInput(text);
-        if (containsSensitiveData(cleanText)) {
-            sensitiveWarning.innerHTML = `⚠️ Pesan Anda mengandung informasi sensitif (password, OTP, nomor telepon, dll). Yakin ingin mengirim?`;
-            sensitiveWarning.style.display = 'block';
-            const confirmed = await confirmAction('Pesan terdeteksi mengandung data sensitif. Lanjutkan kirim?');
-            sensitiveWarning.style.display = 'none';
-            if (!confirmed) {
-                return;
-            }
-        }
+    // Set initial online status
+    updateUserOnlineStatus(currentUser.userId, true);
 
-        // Kirim
-        isSending = true;
-        sendBtn.disabled = true;
-        try {
-            const messageData = {
-                uid: currentUser.uid,
-                displayName: currentUser.displayName,
-                message: cleanText,
-                createdAt: serverTimestamp(),
-                expireAt: Timestamp.fromDate(new Date(Date.now() + 12 * 60 * 60 * 1000)) // 12 jam
-            };
-            await addDocument('messages', messageData);
-            lastMessageTime = now;
-            messageInput.value = '';
-            messageInput.style.height = 'auto';
-            sendBtn.disabled = true;
-            // Scroll ke bawah setelah kirim (akan otomatis oleh listener)
-        } catch (e) {
-            console.error('Gagal kirim:', e);
-            showToast('Gagal mengirim pesan.', 'error');
-        } finally {
-            isSending = false;
-            sendBtn.disabled = isEmptyMessage(messageInput.value);
-        }
-    }
-
-    function loadMessages() {
-        // Listener realtime
-        if (messageListener) messageListener();
-        messageListener = listenCollection(
-            'messages',
-            (docs) => {
-                renderMessages(docs);
-            },
-            [], // tanpa filter
-            'createdAt',
-            'asc'
-        );
-    }
-
-    function renderMessages(docs) {
-        const container = document.getElementById('messageContainer');
-        const emptyState = document.getElementById('emptyState');
-
-        if (docs.length === 0) {
-            container.innerHTML = `<div class="empty-state" id="emptyState"><span>💬</span><p>Belum ada pesan. Mulai percakapan!</p></div>`;
-            return;
-        }
-
-        // Hapus empty state jika ada
-        const existingEmpty = container.querySelector('.empty-state');
-        if (existingEmpty) existingEmpty.remove();
-
-        // Build HTML
-        let html = '';
-        docs.forEach((doc) => {
-            const isOwn = doc.uid === currentUser.uid;
-            const time = formatTimestamp(doc.createdAt);
-            const displayName = escapeHtml(doc.displayName) || 'Anonim';
-            const message = escapeHtml(doc.message);
-            html += `
-                <div class="message-item ${isOwn ? 'own' : ''}" data-id="${doc.id}">
-                    <div class="message-header">
-                        <span class="message-name">${displayName}</span>
-                        <span class="message-time">${time}</span>
-                    </div>
-                    <div class="message-text">${message}</div>
-                    <div class="message-actions">
-                        ${!isOwn ? `<button class="report-btn" data-id="${doc.id}">🚩 Laporkan</button>` : ''}
-                    </div>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
-
-        // Auto scroll ke bawah
-        const chatMain = document.getElementById('chatMain');
-        chatMain.scrollTop = chatMain.scrollHeight;
-
-        // Event listener untuk report
-        document.querySelectorAll('.report-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const messageId = btn.dataset.id;
-                const reason = prompt('Alasan melaporkan pesan ini:');
-                if (reason && reason.trim().length > 0) {
-                    try {
-                        await addDocument('reports', {
-                            messageId: messageId,
-                            reporterUid: currentUser.uid,
-                            reason: reason.trim(),
-                            createdAt: serverTimestamp()
-                        });
-                        showToast('Pesan dilaporkan. Terima kasih.');
-                    } catch (err) {
-                        showToast('Gagal melaporkan.', 'error');
-                    }
-                }
-            });
-        });
-    }
-
-    // Status online (dot)
-    const statusDot = document.getElementById('statusDot');
-    const statusText = document.getElementById('statusText');
-    // Simulasi status
-    setInterval(() => {
-        statusDot.style.background = '#48bb78';
-        statusText.textContent = 'Online';
-    }, 5000);
+    // Start listening to user status for current partner when room selected
 }
 
-export { initChat };
+async function loadRooms() {
+    const rooms = await getUserRooms(currentUser.userId);
+    const roomsList = document.getElementById('roomsList');
+    roomsList.innerHTML = '';
+
+    if (rooms.length === 0) {
+        roomsList.innerHTML = '<div class="empty-rooms" style="padding:20px;color:var(--text-secondary);">No chats yet. Start a new chat!</div>';
+        return;
+    }
+
+    // For each room, get partner info
+    for (const room of rooms) {
+        const partnerId = room.members.find(id => id !== currentUser.userId);
+        if (!partnerId) continue;
+        const partnerData = await getUserById(partnerId);
+        const partnerName = partnerData ? partnerData.name : 'Unknown';
+
+        // Get last message for preview
+        const lastMsg = await getLastMessage(room.roomId);
+        const lastText = lastMsg ? (lastMsg.text ? decryptMessage(lastMsg.text) : '') : '';
+
+        const div = document.createElement('div');
+        div.className = 'room-item';
+        div.dataset.roomId = room.roomId;
+        div.dataset.partnerId = partnerId;
+        div.innerHTML = `
+            <span class="room-name">${partnerName}</span>
+            <span class="room-last-msg">${lastText.substring(0, 30)}</span>
+        `;
+        div.addEventListener('click', () => {
+            selectRoom(room.roomId, partnerId);
+        });
+        roomsList.appendChild(div);
+    }
+
+    // Auto-select first room if any
+    if (rooms.length > 0) {
+        const firstRoom = rooms[0];
+        const partnerId = firstRoom.members.find(id => id !== currentUser.userId);
+        if (partnerId) {
+            selectRoom(firstRoom.roomId, partnerId);
+        }
+    }
+}
+
+async function getUserById(userId) {
+    const doc = await db.collection('users').doc(userId).get();
+    if (doc.exists) return doc.data();
+    return null;
+}
+
+async function getLastMessage(roomId) {
+    const snapshot = await db.collection('rooms').doc(roomId)
+        .collection('messages')
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].data();
+}
+
+function selectRoom(roomId, partnerId) {
+    if (currentRoomId === roomId) return;
+
+    // Unsubscribe previous listeners
+    if (messagesUnsubscribe) messagesUnsubscribe();
+    if (typingUnsubscribe) typingUnsubscribe();
+    if (statusUnsubscribe) statusUnsubscribe();
+
+    currentRoomId = roomId;
+    currentPartnerId = partnerId;
+
+    // Update chat header
+    getUserById(partnerId).then(partner => {
+        document.getElementById('chatPartnerName').textContent = partner ? partner.name : 'Unknown';
+        // Listen to partner status
+        statusUnsubscribe = listenUserStatus(partnerId, (data) => {
+            const dot = document.getElementById('chatPartnerStatus');
+            if (data && data.online) {
+                dot.className = 'status-dot online';
+            } else {
+                dot.className = 'status-dot offline';
+            }
+        });
+    });
+
+    // Highlight selected room in sidebar
+    document.querySelectorAll('.room-item').forEach(el => el.classList.remove('active'));
+    const activeItem = document.querySelector(`.room-item[data-room-id="${roomId}"]`);
+    if (activeItem) activeItem.classList.add('active');
+
+    // Load messages
+    loadMessages(roomId);
+
+    // Listen for typing
+    typingUnsubscribe = listenTyping(roomId, (typingMap) => {
+        const indicator = document.getElementById('typingIndicator');
+        if (typingMap && typingMap[partnerId] === true) {
+            indicator.style.display = 'block';
+        } else {
+            indicator.style.display = 'none';
+        }
+    });
+
+    // Update room lastActivity
+    db.collection('rooms').doc(roomId).update({
+        lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+    });
+}
+
+function loadMessages(roomId) {
+    const container = document.getElementById('messagesContainer');
+    container.innerHTML = '<div class="empty-chat">Loading messages...</div>';
+
+    // Listen to messages in real-time
+    messagesUnsubscribe = db.collection('rooms').doc(roomId)
+        .collection('messages')
+        .orderBy('createdAt', 'asc')
+        .onSnapshot((snapshot) => {
+            // Filter expired messages
+            const now = new Date();
+            const messages = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.expiresAt && data.expiresAt.toDate) {
+                    const expireDate = data.expiresAt.toDate();
+                    if (expireDate < now) {
+                        // Optionally delete expired message from Firestore
+                        doc.ref.delete().catch(console.warn);
+                        return;
+                    }
+                }
+                messages.push({ id: doc.id, ...data });
+            });
+
+            renderMessages(messages);
+        }, (error) => {
+            console.error('Message listener error:', error);
+        });
+}
+
+function renderMessages(messages) {
+    const container = document.getElementById('messagesContainer');
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-chat">No messages yet. Say hello!</div>';
+        return;
+    }
+
+    let html = '';
+    messages.forEach(msg => {
+        const isOwn = msg.sender === currentUser.userId;
+        const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+        let text = msg.text;
+        if (text) {
+            // Decrypt message
+            text = decryptMessage(text);
+        }
+        const bubbleClass = isOwn ? 'own' : 'other';
+        html += `
+            <div class="message ${bubbleClass}">
+                <div class="msg-text">${text}</div>
+                <div class="msg-time">${time}</div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    if (!text || !currentRoomId) return;
+
+    // Encrypt message
+    const encrypted = encryptMessage(text);
+
+    const messageData = {
+        text: encrypted,
+        sender: currentUser.userId,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        expiresAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 12 * 60 * 60 * 1000)) // 12h
+    };
+
+    try {
+        await db.collection('rooms').doc(currentRoomId)
+            .collection('messages').add(messageData);
+        input.value = '';
+        input.style.height = 'auto';
+        // Update lastActivity
+        await db.collection('rooms').doc(currentRoomId).update({
+            lastActivity: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        // Reset typing
+        setTyping(currentRoomId, currentUser.userId, false);
+    } catch (e) {
+        console.error('Send error:', e);
+        showToast('Failed to send message.');
+    }
+}
+
+function startNewChat() {
+    const publicId = prompt('Enter the Public ID of the person you want to chat with:');
+    if (!publicId) return;
+
+    getUserByPublicId(publicId.toUpperCase()).then(async (partner) => {
+        if (!partner) {
+            showToast('User not found.');
+            return;
+        }
+        if (partner.userId === currentUser.userId) {
+            showToast('You cannot chat with yourself.');
+            return;
+        }
+        // Create or get room
+        const room = await getOrCreateRoom(currentUser.userId, partner.userId);
+        // Reload rooms and select this room
+        await loadRooms();
+        // Select the room
+        const roomId = room.roomId;
+        const partnerId = partner.userId;
+        // Find the room element and click it
+        const roomEl = document.querySelector(`.room-item[data-room-id="${roomId}"]`);
+        if (roomEl) {
+            roomEl.click();
+        } else {
+            // If not found, reload and try again
+            loadRooms();
+            setTimeout(() => {
+                const el = document.querySelector(`.room-item[data-room-id="${roomId}"]`);
+                if (el) el.click();
+            }, 500);
+        }
+    }).catch(err => {
+        showToast('Error: ' + err.message);
+    });
+}
+
+// Toast helper
+function showToast(msg) {
+    let toast = document.querySelector('.toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.className = 'toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3000);
+}

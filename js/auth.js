@@ -1,155 +1,75 @@
-import { storageSet, storageGet } from './storage.js';
-import { generateRecoveryId, generateDeviceId } from './utils.js';
-import { validateDisplayName } from './validation.js';
-import { addDocument, getDocument, queryDocuments, setDoc, doc, db } from './firebase.js';
-import { showToast } from './ui.js';
+// User functions
 
-// Cek apakah user sudah terdaftar (di localStorage)
-function getLocalUser() {
-    const user = storageGet('user');
-    if (user && user.uid && user.recoveryId) {
-        return user;
-    }
-    return null;
+function generatePublicId() {
+    // Generate a short unique ID (e.g., 6 alphanumeric)
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-// Simpan user ke LocalStorage dan Firestore
-async function registerUser(displayName) {
-    const validation = validateDisplayName(displayName);
-    if (!validation.valid) {
-        showToast(validation.message, 'error');
-        return null;
+async function createUser(displayName) {
+    // Check if already exists in localStorage
+    const existing = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
+    if (existing && existing.userId) {
+        return existing;
     }
 
-    displayName = displayName.trim();
+    // Generate userId (use Firestore doc with auto-id or custom)
+    const userId = db.collection('users').doc().id;
+    const publicId = generatePublicId();
 
-    // Generate UID (gunakan doc id)
-    const uid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    const recoveryId = generateRecoveryId();
-    const deviceId = generateDeviceId();
-
-    // Pastikan recoveryId unik
-    let existing = await queryDocuments('users', [{ field: 'recoveryId', operator: '==', value: recoveryId }]);
+    // Check uniqueness of publicId (simple loop, but in production handle retries)
+    let unique = false;
     let attempts = 0;
-    while (existing.length > 0 && attempts < 10) {
-        // generate ulang
-        const newRecoveryId = generateRecoveryId();
-        existing = await queryDocuments('users', [{ field: 'recoveryId', operator: '==', value: newRecoveryId }]);
-        if (existing.length === 0) {
-            recoveryId = newRecoveryId;
-            break;
+    let finalPublicId = publicId;
+    while (!unique && attempts < 5) {
+        const snapshot = await db.collection('users').where('publicId', '==', finalPublicId).get();
+        if (snapshot.empty) {
+            unique = true;
+        } else {
+            finalPublicId = generatePublicId();
+            attempts++;
         }
-        attempts++;
+    }
+    if (!unique) {
+        throw new Error('Could not generate unique public ID.');
     }
 
     const userData = {
-        uid,
-        displayName,
-        recoveryId,
-        deviceId,
-        createdAt: new Date()
+        name: displayName.trim(),
+        publicId: finalPublicId,
+        online: true,
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
     };
 
-    try {
-        await setDoc(doc(db, 'users', uid), userData);
-        // Simpan ke localStorage
-        storageSet('user', { uid, displayName, recoveryId, deviceId });
-        return userData;
-    } catch (e) {
-        console.error('Gagal registrasi:', e);
-        showToast('Gagal mendaftar. Coba lagi.', 'error');
-        return null;
-    }
+    await db.collection('users').doc(userId).set(userData);
+
+    const user = {
+        userId,
+        name: displayName.trim(),
+        publicId: finalPublicId
+    };
+    localStorage.setItem('ephemeral_user', JSON.stringify(user));
+    return user;
 }
 
-// Init landing page
-function initAuth() {
-    const displayInput = document.getElementById('displayNameInput');
-    const agreeCheck = document.getElementById('agreeCheck');
-    const startBtn = document.getElementById('startBtn');
-    const charCount = document.getElementById('charCount');
-    const recoverySection = document.getElementById('recoverySection');
-    const recoveryIdDisplay = document.getElementById('recoveryIdDisplay');
-    const copyRecoveryBtn = document.getElementById('copyRecoveryBtn');
-    const proceedBtn = document.getElementById('proceedToChatBtn');
-    const authMessage = document.getElementById('authMessage');
+async function getUserByPublicId(publicId) {
+    const snapshot = await db.collection('users').where('publicId', '==', publicId).limit(1).get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { userId: doc.id, ...doc.data() };
+}
 
-    // Cek user existing
-    const existingUser = getLocalUser();
-    if (existingUser) {
-        // langsung arahkan ke chat
-        window.location.href = 'chat.html';
-        return;
-    }
-
-    // Update char count
-    displayInput.addEventListener('input', () => {
-        charCount.textContent = displayInput.value.length;
-        updateStartButton();
-    });
-
-    agreeCheck.addEventListener('change', updateStartButton);
-    displayInput.addEventListener('input', updateStartButton);
-
-    function updateStartButton() {
-        const name = displayInput.value.trim();
-        const agreed = agreeCheck.checked;
-        startBtn.disabled = !(agreed && name.length > 0 && name.length <= 30);
-    }
-
-    startBtn.addEventListener('click', async () => {
-        const displayName = displayInput.value.trim();
-        const agreed = agreeCheck.checked;
-        if (!agreed) {
-            authMessage.textContent = 'Harap setujui Panduan Komunitas.';
-            return;
-        }
-        const validation = validateDisplayName(displayName);
-        if (!validation.valid) {
-            authMessage.textContent = validation.message;
-            return;
-        }
-
-        authMessage.textContent = '';
-        startBtn.disabled = true;
-        startBtn.textContent = 'Memproses...';
-
-        const user = await registerUser(displayName);
-        if (user) {
-            // Tampilkan recovery ID
-            recoverySection.style.display = 'block';
-            recoveryIdDisplay.textContent = user.recoveryId;
-            startBtn.style.display = 'none';
-            // Sembunyikan form
-            document.querySelector('.guidelines').style.display = 'none';
-            document.querySelector('.privacy-warning').style.display = 'none';
-            document.querySelector('.checkbox-group').style.display = 'none';
-            document.querySelector('.form-group').style.display = 'none';
-            // Sembunyikan tagline? opsional
-        } else {
-            startBtn.disabled = false;
-            startBtn.textContent = 'Lanjutkan →';
-        }
-    });
-
-    copyRecoveryBtn.addEventListener('click', () => {
-        const text = recoveryIdDisplay.textContent;
-        navigator.clipboard.writeText(text).then(() => {
-            showToast('Recovery ID disalin!');
-        }).catch(() => {
-            // fallback
-            const range = document.createRange();
-            range.selectNode(recoveryIdDisplay);
-            window.getSelection().removeAllRanges();
-            window.getSelection().addRange(range);
-            document.execCommand('copy');
-            showToast('Recovery ID disalin!');
-        });
-    });
-
-    proceedBtn.addEventListener('click', () => {
-        window.location.href = 'chat.html';
+async function updateUserOnlineStatus(userId, online) {
+    await db.collection('users').doc(userId).update({
+        online: online,
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
     });
 }
 
-export { initAuth, getLocalUser, registerUser };
+// Listen to user status changes
+function listenUserStatus(userId, callback) {
+    return db.collection('users').doc(userId).onSnapshot((doc) => {
+        if (doc.exists) {
+            callback(doc.data());
+        }
+    });
+}

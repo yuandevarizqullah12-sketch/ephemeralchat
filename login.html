@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login – EphemeralChat</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+    <div id="login-container">
+        <div class="login-card">
+            <h1>💬 EphemeralChat</h1>
+            <p class="subtitle">Private & temporary messaging</p>
+
+            <!-- Security Warning -->
+            <div class="warning-box">
+                <h3>⚠️ Security Notice</h3>
+                <ul>
+                    <li>This app is not fully secure like WhatsApp.</li>
+                    <li>Do not send sensitive data (passwords, OTP, personal info).</li>
+                    <li>Messages are temporary (auto-deleted after 12 hours).</li>
+                    <li>Use at your own risk.</li>
+                </ul>
+                <label>
+                    <input type="checkbox" id="agreeCheck" />
+                    I understand and agree
+                </label>
+            </div>
+
+            <!-- Name input -->
+            <div class="form-group">
+                <label for="nameInput">Your display name</label>
+                <input type="text" id="nameInput" placeholder="Enter your name" maxlength="30" />
+            </div>
+
+            <button id="loginBtn" disabled>Start Chat</button>
+            <div id="loginError" class="error-msg"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <!-- CryptoJS for encryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+    <!-- App scripts -->
+    <script src="js/firebase.js"></script>
+    <script src="js/encryption.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
+    <script>
+        // Login logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const nameInput = document.getElementById('nameInput');
+            const agreeCheck = document.getElementById('agreeCheck');
+            const loginBtn = document.getElementById('loginBtn');
+            const loginError = document.getElementById('loginError');
+
+            function validate() {
+                const name = nameInput.value.trim();
+                const agreed = agreeCheck.checked;
+                loginBtn.disabled = !(name.length > 0 && agreed);
+            }
+
+            nameInput.addEventListener('input', validate);
+            agreeCheck.addEventListener('change', validate);
+
+            loginBtn.addEventListener('click', async () => {
+                const name = nameInput.value.trim();
+                if (!name) return;
+
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Creating...';
+                loginError.textContent = '';
+
+                try {
+                    // Use auth.js to create or load user
+                    const user = await window.createUser(name);
+                    if (user) {
+                        window.location.href = 'chat.html';
+                    } else {
+                        loginError.textContent = 'Failed to create user. Try again.';
+                        loginBtn.disabled = false;
+                        loginBtn.textContent = 'Start Chat';
+                    }
+                } catch (e) {
+                    console.error(e);
+                    loginError.textContent = 'Error: ' + e.message;
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Start Chat';
+                }
+            });
+
+            // Check if already logged in
+            const existing = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
+            if (existing && existing.userId) {
+                window.location.href = 'chat.html';
+            }
+        });
+    </script>
+</body>
+</html>
