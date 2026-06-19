@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>EphemeralChat</title>
-    <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
     <script>
-        // Redirect to login or chat based on localStorage
-        const user = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
-        if (user && user.userId) {
+        // Check if user is logged in via localStorage
+        const session = JSON.parse(localStorage.getItem('ephemeral_session') || 'null');
+        if (session && session.userId) {
             window.location.href = 'chat.html';
         } else {
+            // Redirect to login page (or signup? we'll use login as default entry)
             window.location.href = 'login.html';
         }
     </script>

@@ -1,63 +1,79 @@
-// User functions
+// Auth functions
 
+// Generate a random user ID (numeric string)
+function generateUserId() {
+    return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit
+}
+
+// Generate a public ID (alphanumeric)
 function generatePublicId() {
-    // Generate a short unique ID (e.g., 6 alphanumeric)
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-async function createUser(displayName) {
-    // Check if already exists in localStorage
-    const existing = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
-    if (existing && existing.userId) {
-        return existing;
+// Create a new user
+async function createUser(username) {
+    username = username.trim();
+    if (!username) throw new Error('Username required');
+
+    // Check if username already exists (optional)
+    const snapshot = await db.collection('users').where('username', '==', username).get();
+    if (!snapshot.empty) {
+        // Username taken – we could auto-generate a suffix, but we'll just reject
+        throw new Error('Username already taken. Please choose another.');
     }
 
-    // Generate userId (use Firestore doc with auto-id or custom)
-    const userId = db.collection('users').doc().id;
+    // Generate unique userId (simple numeric, but ensure uniqueness)
+    let userId = generateUserId();
+    let attempts = 0;
+    let userDoc = await db.collection('users').doc(userId).get();
+    while (userDoc.exists && attempts < 10) {
+        userId = generateUserId();
+        userDoc = await db.collection('users').doc(userId).get();
+        attempts++;
+    }
+    if (userDoc.exists) {
+        throw new Error('Could not generate unique user ID.');
+    }
+
     const publicId = generatePublicId();
 
-    // Check uniqueness of publicId (simple loop, but in production handle retries)
-    let unique = false;
-    let attempts = 0;
-    let finalPublicId = publicId;
-    while (!unique && attempts < 5) {
-        const snapshot = await db.collection('users').where('publicId', '==', finalPublicId).get();
-        if (snapshot.empty) {
-            unique = true;
-        } else {
-            finalPublicId = generatePublicId();
-            attempts++;
-        }
-    }
-    if (!unique) {
-        throw new Error('Could not generate unique public ID.');
-    }
-
     const userData = {
-        name: displayName.trim(),
-        publicId: finalPublicId,
+        username,
+        publicId,
         online: true,
         lastSeen: firebase.firestore.FieldValue.serverTimestamp()
     };
 
     await db.collection('users').doc(userId).set(userData);
 
-    const user = {
+    return {
         userId,
-        name: displayName.trim(),
-        publicId: finalPublicId
+        username,
+        publicId
     };
-    localStorage.setItem('ephemeral_user', JSON.stringify(user));
-    return user;
 }
 
-async function getUserByPublicId(publicId) {
-    const snapshot = await db.collection('users').where('publicId', '==', publicId).limit(1).get();
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    return { userId: doc.id, ...doc.data() };
+// Login user
+async function loginUser(username, userId) {
+    const doc = await db.collection('users').doc(userId).get();
+    if (!doc.exists) return null;
+    const data = doc.data();
+    if (data.username === username) {
+        // Update online status
+        await db.collection('users').doc(userId).update({
+            online: true,
+            lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return {
+            userId,
+            username: data.username,
+            publicId: data.publicId || ''
+        };
+    }
+    return null;
 }
 
+// Update online status
 async function updateUserOnlineStatus(userId, online) {
     await db.collection('users').doc(userId).update({
         online: online,
@@ -72,4 +88,19 @@ function listenUserStatus(userId, callback) {
             callback(doc.data());
         }
     });
+}
+
+// Get user by public ID (for new chat)
+async function getUserByPublicId(publicId) {
+    const snapshot = await db.collection('users').where('publicId', '==', publicId).limit(1).get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return { userId: doc.id, ...doc.data() };
+}
+
+// Get user by userId
+async function getUserById(userId) {
+    const doc = await db.collection('users').doc(userId).get();
+    if (doc.exists) return { userId, ...doc.data() };
+    return null;
 }

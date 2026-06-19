@@ -1,8 +1,5 @@
-// Shared UI utilities (used across pages)
-
-// Toast (already defined in chat.js, but we'll expose globally)
+// Toast notification
 window.showToast = function(message) {
-    // Implementation (can be used in any page)
     let toast = document.querySelector('.toast');
     if (!toast) {
         toast = document.createElement('div');

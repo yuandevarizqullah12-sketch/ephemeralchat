@@ -1,7 +1,7 @@
 // Room utilities
 
 function getRoomId(userId1, userId2) {
-    // Deterministic room ID: sort userIds and concatenate
+    // Deterministic sorted concatenation
     const ids = [userId1, userId2].sort();
     return ids.join('_');
 }
@@ -19,7 +19,7 @@ async function getOrCreateRoom(userId1, userId2) {
             members: [userId1, userId2],
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             lastActivity: firebase.firestore.FieldValue.serverTimestamp(),
-            typing: {} // map of userId: boolean
+            typing: {}
         };
         await roomRef.set(roomData);
         return { roomId, ...roomData };
@@ -27,7 +27,6 @@ async function getOrCreateRoom(userId1, userId2) {
 }
 
 async function getUserRooms(userId) {
-    // Get all rooms where userId is in members array
     const snapshot = await db.collection('rooms')
         .where('members', 'array-contains', userId)
         .orderBy('lastActivity', 'desc')
@@ -35,12 +34,12 @@ async function getUserRooms(userId) {
     return snapshot.docs.map(doc => ({ roomId: doc.id, ...doc.data() }));
 }
 
-// Listen for typing indicator
+// Listen to typing indicator
 function listenTyping(roomId, callback) {
     return db.collection('rooms').doc(roomId).onSnapshot((doc) => {
         if (doc.exists) {
             const data = doc.data();
-            if (data.typing) {
+            if (data && data.typing) {
                 callback(data.typing);
             }
         }
@@ -52,4 +51,15 @@ async function setTyping(roomId, userId, isTyping) {
     await db.collection('rooms').doc(roomId).update({
         [`typing.${userId}`]: isTyping
     });
+}
+
+// Get last message for room (for preview)
+async function getLastMessage(roomId) {
+    const snapshot = await db.collection('rooms').doc(roomId)
+        .collection('messages')
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].data();
 }

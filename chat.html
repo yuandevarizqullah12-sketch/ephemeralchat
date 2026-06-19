@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>EphemeralChat</title>
     <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -12,11 +12,14 @@
         <aside id="sidebar">
             <div class="sidebar-header">
                 <h2>💬 Chats</h2>
-                <button id="newChatBtn" class="icon-btn">✚</button>
+                <button id="newChatBtn" class="icon-btn" title="New chat">✚</button>
             </div>
             <div id="userInfo" class="user-info">
                 <span id="sidebarUserName"></span>
-                <button id="logoutSidebarBtn" class="icon-btn" title="Logout">⏻</button>
+                <div>
+                    <button id="settingsBtn" class="icon-btn" title="Settings">⚙</button>
+                    <button id="logoutSidebarBtn" class="icon-btn" title="Logout">⏻</button>
+                </div>
             </div>
             <div id="roomsList" class="rooms-list">
                 <!-- dynamic rooms -->
@@ -30,7 +33,6 @@
                 <span id="chatPartnerStatus" class="status-dot offline"></span>
             </div>
             <div id="messagesContainer" class="messages-container">
-                <!-- messages will be rendered here -->
                 <div class="empty-chat">Select a contact to start messaging</div>
             </div>
             <div id="typingIndicator" class="typing-indicator" style="display:none;">typing...</div>
@@ -46,7 +48,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
-    <!-- App scripts -->
     <script src="js/firebase.js"></script>
     <script src="js/encryption.js"></script>
     <script src="js/auth.js"></script>
@@ -56,15 +57,13 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Ensure user is logged in
-            const user = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
-            if (!user || !user.userId) {
+            const session = JSON.parse(localStorage.getItem('ephemeral_session') || 'null');
+            if (!session || !session.userId) {
                 window.location.href = 'login.html';
                 return;
             }
-
             // Initialize chat
-            window.initChat(user);
+            window.initChat(session);
         });
     </script>
 </body>

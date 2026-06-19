@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Settings – EphemeralChat</title>
     <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -11,17 +11,17 @@
         <div class="settings-card">
             <h1>⚙️ Settings</h1>
             <div class="settings-item">
-                <label>Name</label>
-                <span id="settingsName"></span>
+                <label>Username</label>
+                <span id="settingsUsername"></span>
             </div>
             <div class="settings-item">
-                <label>Your Public ID</label>
+                <label>User ID (internal)</label>
+                <span id="settingsUserId"></span>
+            </div>
+            <div class="settings-item">
+                <label>Public ID (shareable)</label>
                 <span id="settingsPublicId"></span>
                 <button id="copyPublicIdBtn" class="small-btn">Copy</button>
-            </div>
-            <div class="settings-item">
-                <label>Your User ID (internal)</label>
-                <span id="settingsUserId" style="font-size:0.8rem;opacity:0.7;"></span>
             </div>
             <hr />
             <button id="logoutSettingsBtn" class="danger-btn">Logout</button>
@@ -33,25 +33,37 @@
     <script src="js/ui.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const user = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
-            if (!user || !user.userId) {
+            const session = JSON.parse(localStorage.getItem('ephemeral_session') || 'null');
+            if (!session || !session.userId) {
                 window.location.href = 'login.html';
                 return;
             }
 
-            document.getElementById('settingsName').textContent = user.name;
-            document.getElementById('settingsPublicId').textContent = user.publicId;
-            document.getElementById('settingsUserId').textContent = user.userId;
+            document.getElementById('settingsUsername').textContent = session.username;
+            document.getElementById('settingsUserId').textContent = session.userId;
+            document.getElementById('settingsPublicId').textContent = session.publicId || 'Not set';
 
             document.getElementById('copyPublicIdBtn').addEventListener('click', () => {
-                navigator.clipboard.writeText(user.publicId).then(() => {
-                    window.showToast('Public ID copied!');
-                });
+                const text = session.publicId || '';
+                if (text) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        window.showToast('Public ID copied!');
+                    }).catch(() => {
+                        // fallback
+                        prompt('Copy this:', text);
+                    });
+                } else {
+                    window.showToast('No public ID set.');
+                }
             });
 
             document.getElementById('logoutSettingsBtn').addEventListener('click', () => {
                 if (confirm('Logout?')) {
-                    localStorage.removeItem('ephemeral_user');
+                    // Update online status to false
+                    if (window.updateUserOnlineStatus) {
+                        window.updateUserOnlineStatus(session.userId, false);
+                    }
+                    localStorage.removeItem('ephemeral_session');
                     window.location.href = 'login.html';
                 }
             });

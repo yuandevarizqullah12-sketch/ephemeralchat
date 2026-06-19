@@ -2,99 +2,105 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Login – EphemeralChat</title>
     <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
     <div id="login-container">
-        <div class="login-card">
+        <div class="auth-card">
             <h1>💬 EphemeralChat</h1>
             <p class="subtitle">Private & temporary messaging</p>
 
-            <!-- Security Warning -->
+            <!-- Security warning -->
             <div class="warning-box">
-                <h3>⚠️ Security Notice</h3>
+                <h3>⚠️ Experimental App</h3>
                 <ul>
-                    <li>This app is not fully secure like WhatsApp.</li>
-                    <li>Do not send sensitive data (passwords, OTP, personal info).</li>
-                    <li>Messages are temporary (auto-deleted after 12 hours).</li>
-                    <li>Use at your own risk.</li>
+                    <li>Not fully secure like WhatsApp</li>
+                    <li>Messages expire after 12 hours</li>
+                    <li>Use at your own risk</li>
                 </ul>
                 <label>
                     <input type="checkbox" id="agreeCheck" />
-                    I understand and agree
+                    I understand
                 </label>
             </div>
 
-            <!-- Name input -->
             <div class="form-group">
-                <label for="nameInput">Your display name</label>
-                <input type="text" id="nameInput" placeholder="Enter your name" maxlength="30" />
+                <label for="loginUsername">Username</label>
+                <input type="text" id="loginUsername" placeholder="Your username" />
             </div>
-
-            <button id="loginBtn" disabled>Start Chat</button>
+            <div class="form-group">
+                <label for="loginUserId">Your User ID (internal)</label>
+                <input type="text" id="loginUserId" placeholder="Paste your user ID" />
+            </div>
+            <button id="loginBtn" disabled>Login</button>
             <div id="loginError" class="error-msg"></div>
+            <p class="switch-auth">
+                Don't have an account? <a href="signup.html">Sign up</a>
+            </p>
         </div>
     </div>
 
-    <!-- Firebase SDK -->
+    <!-- Firebase & Libs -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-    <!-- CryptoJS for encryption -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 
-    <!-- App scripts -->
     <script src="js/firebase.js"></script>
-    <script src="js/encryption.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/ui.js"></script>
     <script>
-        // Login logic
         document.addEventListener('DOMContentLoaded', () => {
-            const nameInput = document.getElementById('nameInput');
+            const usernameInput = document.getElementById('loginUsername');
+            const userIdInput = document.getElementById('loginUserId');
             const agreeCheck = document.getElementById('agreeCheck');
             const loginBtn = document.getElementById('loginBtn');
             const loginError = document.getElementById('loginError');
 
             function validate() {
-                const name = nameInput.value.trim();
-                const agreed = agreeCheck.checked;
-                loginBtn.disabled = !(name.length > 0 && agreed);
+                const username = usernameInput.value.trim();
+                const userId = userIdInput.value.trim();
+                loginBtn.disabled = !(agreeCheck.checked && username.length > 0 && userId.length > 0);
             }
 
-            nameInput.addEventListener('input', validate);
+            usernameInput.addEventListener('input', validate);
+            userIdInput.addEventListener('input', validate);
             agreeCheck.addEventListener('change', validate);
 
             loginBtn.addEventListener('click', async () => {
-                const name = nameInput.value.trim();
-                if (!name) return;
-
-                loginBtn.disabled = true;
-                loginBtn.textContent = 'Creating...';
+                const username = usernameInput.value.trim();
+                const userId = userIdInput.value.trim();
                 loginError.textContent = '';
 
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Logging in...';
+
                 try {
-                    // Use auth.js to create or load user
-                    const user = await window.createUser(name);
+                    const user = await window.loginUser(username, userId);
                     if (user) {
+                        // Save session
+                        localStorage.setItem('ephemeral_session', JSON.stringify({
+                            userId: user.userId,
+                            username: user.username,
+                            publicId: user.publicId || ''
+                        }));
                         window.location.href = 'chat.html';
                     } else {
-                        loginError.textContent = 'Failed to create user. Try again.';
+                        loginError.textContent = 'Invalid username or user ID. Please check and try again.';
                         loginBtn.disabled = false;
-                        loginBtn.textContent = 'Start Chat';
+                        loginBtn.textContent = 'Login';
                     }
                 } catch (e) {
-                    console.error(e);
                     loginError.textContent = 'Error: ' + e.message;
                     loginBtn.disabled = false;
-                    loginBtn.textContent = 'Start Chat';
+                    loginBtn.textContent = 'Login';
                 }
             });
 
-            // Check if already logged in
-            const existing = JSON.parse(localStorage.getItem('ephemeral_user') || 'null');
-            if (existing && existing.userId) {
+            // If already logged in, redirect
+            const session = JSON.parse(localStorage.getItem('ephemeral_session') || 'null');
+            if (session && session.userId) {
                 window.location.href = 'chat.html';
             }
         });

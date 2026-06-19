@@ -1,36 +1,14 @@
-// Simple symmetric encryption using CryptoJS
-// For demo purposes, using a fixed key. In production, derive per-user/room key.
-const SECRET_KEY = 'ephemeral-chat-secret-key-v1';
+// Shared secret key (for demo; in production derive per room or use key exchange)
+const SECRET_KEY = 'ephemeralchat-v1-7fX9@secure-key';
 
-// Encrypt message
 function encryptMessage(text) {
-    try {
-        if (!text) return '';
-
-        return CryptoJS.AES.encrypt(
-            String(text),
-            SECRET_KEY
-        ).toString();
-    } catch (e) {
-        console.warn('Encryption failed:', e);
-        return '';
-    }
+    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
 }
 
-// Decrypt message
 function decryptMessage(ciphertext) {
     try {
-        if (!ciphertext) return '';
-
-        const bytes = CryptoJS.AES.decrypt(
-            ciphertext,
-            SECRET_KEY
-        );
-
-        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-
-        // fallback kalau gagal decrypt
-        return decrypted || '[invalid message]';
+        const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
+        return bytes.toString(CryptoJS.enc.Utf8);
     } catch (e) {
         console.warn('Decryption failed:', e);
         return '[decryption error]';

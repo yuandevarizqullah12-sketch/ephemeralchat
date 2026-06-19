@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Sign Up – EphemeralChat</title>
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+    <div id="signup-container">
+        <div class="auth-card">
+            <h1>💬 EphemeralChat</h1>
+            <p class="subtitle">Create your account</p>
+
+            <div class="form-group">
+                <label for="signupUsername">Choose a username</label>
+                <input type="text" id="signupUsername" placeholder="Your display name" maxlength="30" />
+            </div>
+            <button id="signupBtn">Sign Up</button>
+            <div id="signupError" class="error-msg"></div>
+            <p class="switch-auth">
+                Already have an account? <a href="login.html">Login</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Firebase & Libs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+    <script src="js/firebase.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const usernameInput = document.getElementById('signupUsername');
+            const signupBtn = document.getElementById('signupBtn');
+            const signupError = document.getElementById('signupError');
+
+            usernameInput.addEventListener('input', () => {
+                signupBtn.disabled = usernameInput.value.trim().length === 0;
+            });
+
+            signupBtn.addEventListener('click', async () => {
+                const username = usernameInput.value.trim();
+                if (!username) return;
+
+                signupBtn.disabled = true;
+                signupBtn.textContent = 'Creating...';
+                signupError.textContent = '';
+
+                try {
+                    const user = await window.createUser(username);
+                    if (user) {
+                        // Save session
+                        localStorage.setItem('ephemeral_session', JSON.stringify({
+                            userId: user.userId,
+                            username: user.username,
+                            publicId: user.publicId || ''
+                        }));
+                        window.location.href = 'chat.html';
+                    } else {
+                        signupError.textContent = 'Signup failed. Please try again.';
+                        signupBtn.disabled = false;
+                        signupBtn.textContent = 'Sign Up';
+                    }
+                } catch (e) {
+                    signupError.textContent = 'Error: ' + e.message;
+                    signupBtn.disabled = false;
+                    signupBtn.textContent = 'Sign Up';
+                }
+            });
+
+            // If already logged in, redirect
+            const session = JSON.parse(localStorage.getItem('ephemeral_session') || 'null');
+            if (session && session.userId) {
+                window.location.href = 'chat.html';
+            }
+        });
+    </script>
+</body>
+</html>
