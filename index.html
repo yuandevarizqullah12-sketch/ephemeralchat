@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ephemeral Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/global.css" />
+    <link rel="stylesheet" href="css/auth.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💬</text></svg>" />
+</head>
+<body>
+    <div id="app" class="auth-container">
+        <div class="auth-card glass">
+            <div class="auth-logo">
+                <span class="logo-icon">💬</span>
+                <h1>Ephemeral Chat</h1>
+            </div>
+            <p class="auth-tagline">Percakapan singkat, tanpa jejak.</p>
+
+            <div class="guidelines">
+                <h3>📋 Panduan Komunitas</h3>
+                <ul>
+                    <li>🔒 Jangan bagikan <strong>password</strong></li>
+                    <li>🔑 Jangan bagikan <strong>OTP / kode verifikasi</strong></li>
+                    <li>🏠 Jangan bagikan <strong>alamat rumah</strong></li>
+                    <li>📱 Jangan bagikan <strong>nomor telepon</strong></li>
+                    <li>🛑 Jangan bagikan <strong>data sensitif</strong> (KTP, NPWP, dll)</li>
+                    <li>🚫 Jangan melakukan <strong>spam</strong></li>
+                    <li>🤝 Jangan melakukan <strong>pelecehan</strong> atau ujaran kebencian</li>
+                </ul>
+                <p class="guidelines-note">
+                    <em>Pengembang tidak meminta pengguna membagikan informasi sensitif.</em><br />
+                    <em>Segala informasi yang dibagikan secara sukarela merupakan tanggung jawab pengguna.</em>
+                </p>
+            </div>
+
+            <div class="privacy-warning">
+                <span>⚠️</span>
+                <p>Pesan akan <strong>terhapus otomatis</strong> setelah 12 jam. Jangan bagikan data pribadi.</p>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="agreeCheck" />
+                <label for="agreeCheck">Saya telah membaca dan menyetujui <strong>Panduan Komunitas</strong> serta memahami <strong>peringatan privasi</strong>.</label>
+            </div>
+
+            <div class="form-group">
+                <label for="displayNameInput">Nama Tampilan</label>
+                <input type="text" id="displayNameInput" placeholder="Masukkan nama panggilan Anda" maxlength="30" autocomplete="off" />
+                <small class="char-counter"><span id="charCount">0</span> / 30</small>
+            </div>
+
+            <div id="authMessage" class="auth-message"></div>
+
+            <button id="startBtn" class="btn-primary btn-large" disabled>Lanjutkan →</button>
+
+            <div id="recoverySection" class="recovery-section" style="display:none;">
+                <div class="recovery-box">
+                    <p class="recovery-label">⚠️ Simpan Recovery ID Anda</p>
+                    <p class="recovery-id" id="recoveryIdDisplay"></p>
+                    <button id="copyRecoveryBtn" class="btn-secondary btn-small">📋 Salin</button>
+                    <button id="proceedToChatBtn" class="btn-primary btn-small">Masuk Chat →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="importmap">
+        {
+            "imports": {
+                "firebase/app": "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js",
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"
+            }
+        }
+    </script>
+
+    <script type="module" src="js/config.js"></script>
+    <script type="module" src="js/firebase.js"></script>
+    <script type="module" src="js/storage.js"></script>
+    <script type="module" src="js/utils.js"></script>
+    <script type="module" src="js/security.js"></script>
+    <script type="module" src="js/validation.js"></script>
+    <script type="module" src="js/ui.js"></script>
+    <script type="module" src="js/auth.js"></script>
+    <script type="module">
+        import { initAuth } from './js/auth.js';
+        initAuth();
+    </script>
+</body>
+</html>
